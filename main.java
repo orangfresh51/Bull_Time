@@ -518,3 +518,55 @@ public final class Bull_Time {
                     "curator", GENESIS_CURATOR,
                     "brake", GENESIS_BRAKE,
                     "sink", GENESIS_SINK
+            ));
+            Pulse last = pulseHistory.isEmpty() ? null : pulseHistory.get(pulseHistory.size() - 1);
+            if (last != null) {
+                m.put("lastPulse", pulseToJson(last));
+                m.put("state", last.state().name());
+            } else {
+                m.put("lastPulse", null);
+                m.put("state", BullState.UNKNOWN.name());
+            }
+            m.put("engine", engine.snapshot());
+            m.put("ts", Instant.now().getEpochSecond());
+            return m;
+        }
+
+        public synchronized Map<String, Object> pulsesJson() {
+            List<Map<String, Object>> list = new ArrayList<>();
+            int start = Math.max(0, pulseHistory.size() - 200);
+            for (int i = start; i < pulseHistory.size(); i++) list.add(pulseToJson(pulseHistory.get(i)));
+            return mapOf("pulses", list);
+        }
+
+        private static Map<String, Object> pulseToJson(Pulse p) {
+            return mapOf(
+                    "epoch", p.epoch,
+                    "at", p.atEpochSeconds,
+                    "atIso", iso(p.atEpochSeconds),
+                    "medianPriceX96", "0x" + p.medianPriceX96.toString(16),
+                    "bullScoreBps", p.bullScoreBps,
+                    "volScoreBps", p.volScoreBps,
+                    "moodScoreBps", p.moodScoreBps,
+                    "revealsUsed", p.revealsUsed,
+                    "state", p.state().name(),
+                    "pulseHash", p.pulseHashHex
+            );
+        }
+    }
+
+    // =========================
+    // CLI
+    // =========================
+    public static void main(String[] args) throws Exception {
+        Map<String, String> flags = parseFlags(args);
+        int port = parseInt(flags.getOrDefault("port", "8837"), 8837);
+        boolean serve = "1".equals(flags.getOrDefault("serve", "1"));
+        boolean simulate = "1".equals(flags.getOrDefault("simulate", "1"));
+        int steps = parseInt(flags.getOrDefault("steps", "200"), 200);
+        int minReveals = parseInt(flags.getOrDefault("minReveals", "5"), 5);
+
+        byte[] domainSalt = sha256((MOTTO + "|" + GENESIS_CURATOR + "|" + Instant.now().getEpochSecond() + "|" + HEX_SEED_C.toString(16)).getBytes(StandardCharsets.UTF_8));
+        List<String> feeders = defaultFeeders();
+
+        EngineHub hub = new EngineHub(domainSalt, minReveals, feeders);
