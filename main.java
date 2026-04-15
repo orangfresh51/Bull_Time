@@ -102,3 +102,55 @@ public final class Bull_Time {
 
         public BullState state() { return BullState.fromScoreBps(bullScoreBps); }
     }
+
+    public static final class RevealPayload {
+        public final long epoch;
+        public final String feeder;
+        public final BigInteger priceX96;
+        public final long volumeHint;
+        public final int sentimentBps;
+        public final String auxTagHex;
+        public final String secretHex;
+
+        public RevealPayload(long epoch, String feeder, BigInteger priceX96, long volumeHint, int sentimentBps, String auxTagHex, String secretHex) {
+            this.epoch = epoch;
+            this.feeder = feeder;
+            this.priceX96 = priceX96;
+            this.volumeHint = volumeHint;
+            this.sentimentBps = sentimentBps;
+            this.auxTagHex = auxTagHex;
+            this.secretHex = secretHex;
+        }
+    }
+
+    // =========================
+    // "AI-ish" indicator engine
+    // =========================
+    public static final class IndicatorEngine {
+        private final SecureRandom rng;
+        private final Deque<Double> close = new ArrayDeque<>();
+        private final Deque<Double> vol = new ArrayDeque<>();
+        private final Deque<Double> mood = new ArrayDeque<>();
+
+        public IndicatorEngine(byte[] seed) {
+            this.rng = seededRng(seed);
+        }
+
+        public void ingest(double price, double volume, double moodBps) {
+            push(close, price, 2048);
+            push(vol, volume, 2048);
+            push(mood, moodBps, 2048);
+        }
+
+        private static void push(Deque<Double> d, double x, int max) {
+            d.addLast(x);
+            while (d.size() > max) d.removeFirst();
+        }
+
+        public Map<String, Object> snapshot() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("n", close.size());
+            m.put("emaFast", ema(close, 13));
+            m.put("emaSlow", ema(close, 55));
+            m.put("rsi", rsi(close, 14));
+            m.put("volZ", zscore(vol, 40));
