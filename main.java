@@ -310,3 +310,55 @@ public final class Bull_Time {
         public CommitReveal(byte[] domainSalt) {
             this.domainSalt = domainSalt.clone();
         }
+
+        public RevealPayload randomPayload(long epoch, String feeder) {
+            SecureRandom r = seededRng(sha256((epoch + "|" + feeder + "|" + BUILD_TAG).getBytes(StandardCharsets.UTF_8)));
+            BigInteger priceX96 = new BigInteger(96, r).add(BigInteger.ONE).shiftLeft(32).add(new BigInteger(40, r)); // make it non-trivial
+            long volumeHint = Math.abs(r.nextLong());
+            int sentiment = Math.floorMod(r.nextInt(), 10_001);
+            String aux = "0x" + hex(sha256(("aux|" + epoch + "|" + feeder + "|" + r.nextLong()).getBytes(StandardCharsets.UTF_8)));
+            String secret = "0x" + hex(sha256(("sec|" + epoch + "|" + feeder + "|" + r.nextLong() + "|" + r.nextLong()).getBytes(StandardCharsets.UTF_8)));
+            return new RevealPayload(epoch, feeder, priceX96, volumeHint, sentiment, aux, secret);
+        }
+
+        public byte[] expectedCommitHash(RevealPayload p) {
+            // Mirror Solidity: keccak256(abi.encodePacked("BT_COMMIT", BT_DOMAIN_SALT, epoch, feeder, priceX96, volumeHint, sentimentBps, auxTag, secret))
+            // Here: we don't have keccak in stock JDK; we use SHA-256 as a stand-in for off-chain simulation.
+            // If you later wire Web3j/BouncyCastle, swap this to Keccak-256 and ABI packing.
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            try {
+                bos.write("BT_COMMIT".getBytes(StandardCharsets.UTF_8));
+                bos.write(domainSalt);
+                bos.write(longToBytes(p.epoch));
+                bos.write(p.feeder.getBytes(StandardCharsets.UTF_8));
+                bos.write(bigToBytes(p.priceX96));
+                bos.write(longToBytes(p.volumeHint));
+                bos.write(intToBytes(p.sentimentBps));
+                bos.write(hexToBytes(strip0x(p.auxTagHex)));
+                bos.write(hexToBytes(strip0x(p.secretHex)));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            return sha256(bos.toByteArray());
+        }
+    }
+
+    // =========================
+    // Local in-memory "chain mirror"
+    // =========================
+    public static final class LocalMirror {
+        public final Map<String, Map<Long, byte[]>> commit = new ConcurrentHashMap<>();
+        public final Map<String, Map<Long, RevealPayload>> reveal = new ConcurrentHashMap<>();
+        public final Map<Long, Pulse> pulse = new ConcurrentHashMap<>();
+
+        public final int minReveals;
+
+        public LocalMirror(int minReveals) {
+            this.minReveals = minReveals;
+        }
+
+        public void putCommit(String feeder, long epoch, byte[] h) {
+            commit.computeIfAbsent(feeder, k -> new ConcurrentHashMap<>()).put(epoch, h);
+        }
+
+        public byte[] getCommit(String feeder, long epoch) {
