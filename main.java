@@ -466,3 +466,55 @@ public final class Bull_Time {
                 // feed indicator engine with derived pseudo series
                 double price = x96ToDouble(p.medianPriceX96);
                 engine.ingest(price, p.volScoreBps, p.moodScoreBps);
+            }
+
+            epoch++;
+        }
+
+        private Pulse finalizePulse(long epoch, List<RevealPayload> rs) {
+            rs.sort(Comparator.comparing(a -> a.priceX96));
+            int k = rs.size();
+            BigInteger median;
+            long volP50;
+            int moodP50;
+            if ((k & 1) == 1) {
+                median = rs.get(k / 2).priceX96;
+                volP50 = rs.get(k / 2).volumeHint;
+                moodP50 = rs.get(k / 2).sentimentBps;
+            } else {
+                BigInteger a = rs.get(k / 2 - 1).priceX96;
+                BigInteger b = rs.get(k / 2).priceX96;
+                median = a.add(b).divide(BigInteger.valueOf(2));
+                volP50 = rs.get(k / 2 - 1).volumeHint;
+                moodP50 = rs.get(k / 2 - 1).sentimentBps;
+            }
+
+            // scores from engine + payload features
+            double price = x96ToDouble(median);
+            double vol = squeeze(volP50, 4777, 1100);
+            double mood = moodP50;
+
+            // ingest first so engine state moves
+            engine.ingest(price, vol, mood);
+
+            int bull = engine.bullScoreBps();
+            int volScore = engine.volScoreBps();
+            int moodScore = engine.moodScoreBps();
+
+            byte[] ph = sha256(("pulse|" + epoch + "|" + median.toString(16) + "|" + bull + "|" + volScore + "|" + moodScore + "|" + k).getBytes(StandardCharsets.UTF_8));
+            String pulseHash = "0x" + hex(ph);
+
+            return new Pulse(epoch, Instant.now().getEpochSecond(), median, bull, volScore, moodScore, k, pulseHash);
+        }
+
+        public synchronized Map<String, Object> stateJson() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("app", APP);
+            m.put("dash", DASH);
+            m.put("build", BUILD_TAG);
+            m.put("epoch", epoch);
+            m.put("feeders", feeders);
+            m.put("anchors", mapOf(
+                    "curator", GENESIS_CURATOR,
+                    "brake", GENESIS_BRAKE,
+                    "sink", GENESIS_SINK
