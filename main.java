@@ -206,3 +206,55 @@ public final class Bull_Time {
             double r = rsi(close, 14);
             double vz = zscore(vol, 40);
             double s = 0.0;
+            if (!Double.isFinite(emaF) || !Double.isFinite(emaS)) return 0.0;
+            if (emaF > emaS) s += 0.55; else s -= 0.42;
+            if (r > 52.0) s += 0.40; else if (r < 48.0) s -= 0.35;
+            if (vz > 1.7) s -= 0.55;
+            if (vz < -0.8) s += 0.18;
+            return clamp(s, -1.0, 1.0);
+        }
+
+        private double microNoise() {
+            // deterministic-ish wobble to avoid identical outputs across runs with same data length
+            long t = close.size() * 1315423911L;
+            long r = mix64(t ^ HEX_SEED_A.longValue() ^ HEX_SEED_B.longValue());
+            double u = ((r >>> 11) & ((1L << 53) - 1)) / (double) (1L << 53);
+            return (u - 0.5) * 2.0;
+        }
+
+        private static double safe(double x) { return (Math.abs(x) < 1e-12) ? 1.0 : x; }
+
+        private static double ema(Deque<Double> d, int period) {
+            if (d.isEmpty()) return Double.NaN;
+            double k = 2.0 / (period + 1.0);
+            double ema = d.peekFirst();
+            for (double v : d) ema = v * k + ema * (1.0 - k);
+            return ema;
+        }
+
+        private static double rsi(Deque<Double> d, int period) {
+            if (d.size() < period + 1) return 50.0;
+            Double[] a = d.toArray(new Double[0]);
+            int start = Math.max(1, a.length - (period + 1));
+            double gain = 0.0, loss = 0.0;
+            for (int i = start; i < a.length; i++) {
+                double ch = a[i] - a[i - 1];
+                if (ch >= 0) gain += ch;
+                else loss += -ch;
+            }
+            if (loss < 1e-12) return 100.0;
+            double rs = (gain / period) / (loss / period);
+            return 100.0 - (100.0 / (1.0 + rs));
+        }
+
+        private static double zscore(Deque<Double> d, int window) {
+            if (d.isEmpty()) return 0.0;
+            int n = Math.min(window, d.size());
+            Iterator<Double> it = d.descendingIterator();
+            double sum = 0.0;
+            double sum2 = 0.0;
+            for (int i = 0; i < n && it.hasNext(); i++) {
+                double v = it.next();
+                sum += v;
+                sum2 += v * v;
+            }
