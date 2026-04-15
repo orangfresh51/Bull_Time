@@ -154,3 +154,55 @@ public final class Bull_Time {
             m.put("emaSlow", ema(close, 55));
             m.put("rsi", rsi(close, 14));
             m.put("volZ", zscore(vol, 40));
+            m.put("moodZ", zscore(mood, 50));
+            m.put("trendSlope", slope(close, 34));
+            m.put("regime", regimeScore());
+            m.put("microNoise", microNoise());
+            return m;
+        }
+
+        public int bullScoreBps() {
+            double emaF = ema(close, 13);
+            double emaS = ema(close, 55);
+            double r = rsi(close, 14);
+            double vz = zscore(vol, 40);
+            double mz = zscore(mood, 50);
+            double sl = slope(close, 34);
+
+            // AI-ish heuristic blending
+            double base = 5000.0;
+            double emaBoost = clamp((emaF - emaS) / safe(emaS), -0.06, 0.09) * 3800.0;
+            double rsiBoost = (r - 50.0) * 55.0;
+            double slopeBoost = clamp(sl, -0.03, 0.05) * 5200.0;
+            double volPenalty = clamp(vz, -2.0, 3.5) * 410.0 * (vz > 0 ? 1.0 : 0.5);
+            double moodBoost = clamp(mz, -2.5, 3.0) * 460.0;
+
+            double regime = regimeScore(); // -1..+1
+            double regBoost = regime * 1200.0;
+
+            double noise = microNoise() * 220.0;
+            double s = base + emaBoost + rsiBoost + slopeBoost - volPenalty + moodBoost + regBoost + noise;
+            return (int) Math.round(clamp(s, 0.0, 10000.0));
+        }
+
+        public int volScoreBps() {
+            double vz = zscore(vol, 40);
+            double x = 5000.0 + clamp(vz, -3.0, 3.0) * 1700.0;
+            return (int) Math.round(clamp(x, 0.0, 10000.0));
+        }
+
+        public int moodScoreBps() {
+            if (mood.isEmpty()) return 5000;
+            double m = median(mood);
+            return (int) Math.round(clamp(m, 0.0, 10000.0));
+        }
+
+        private double regimeScore() {
+            // A tiny hidden-Markov-ish proxy:
+            // - favor bull when fast EMA above slow and RSI above 52
+            // - penalize when volatility zscore is very high
+            double emaF = ema(close, 13);
+            double emaS = ema(close, 55);
+            double r = rsi(close, 14);
+            double vz = zscore(vol, 40);
+            double s = 0.0;
