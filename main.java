@@ -258,3 +258,55 @@ public final class Bull_Time {
                 sum += v;
                 sum2 += v * v;
             }
+            double mean = sum / n;
+            double var = Math.max(0.0, sum2 / n - mean * mean);
+            double sd = Math.sqrt(var);
+            if (sd < 1e-12) return 0.0;
+            double last = d.peekLast();
+            return (last - mean) / sd;
+        }
+
+        private static double slope(Deque<Double> d, int window) {
+            if (d.size() < 3) return 0.0;
+            int n = Math.min(window, d.size());
+            Double[] a = d.toArray(new Double[0]);
+            int start = a.length - n;
+            double sx = 0, sy = 0, sxx = 0, sxy = 0;
+            for (int i = 0; i < n; i++) {
+                double x = i;
+                double y = a[start + i];
+                sx += x; sy += y; sxx += x * x; sxy += x * y;
+            }
+            double den = n * sxx - sx * sx;
+            if (Math.abs(den) < 1e-12) return 0.0;
+            double b = (n * sxy - sx * sy) / den;
+            double base = a[a.length - 1];
+            if (Math.abs(base) < 1e-12) base = 1.0;
+            return b / base;
+        }
+
+        private static double median(Deque<Double> d) {
+            if (d.isEmpty()) return 0.0;
+            Double[] a = d.toArray(new Double[0]);
+            Arrays.sort(a);
+            int n = a.length;
+            if ((n & 1) == 1) return a[n / 2];
+            return (a[n / 2 - 1] + a[n / 2]) / 2.0;
+        }
+
+        private static double clamp(double x, double lo, double hi) {
+            if (x < lo) return lo;
+            if (x > hi) return hi;
+            return x;
+        }
+    }
+
+    // =========================
+    // Commit/reveal builder
+    // =========================
+    public static final class CommitReveal {
+        private final byte[] domainSalt;
+
+        public CommitReveal(byte[] domainSalt) {
+            this.domainSalt = domainSalt.clone();
+        }
