@@ -362,3 +362,55 @@ public final class Bull_Time {
         }
 
         public byte[] getCommit(String feeder, long epoch) {
+            Map<Long, byte[]> m = commit.get(feeder);
+            return m == null ? null : m.get(epoch);
+        }
+
+        public void putReveal(RevealPayload p) {
+            reveal.computeIfAbsent(p.feeder, k -> new ConcurrentHashMap<>()).put(p.epoch, p);
+        }
+
+        public List<RevealPayload> revealsFor(long epoch) {
+            List<RevealPayload> out = new ArrayList<>();
+            for (Map<Long, RevealPayload> m : reveal.values()) {
+                RevealPayload p = m.get(epoch);
+                if (p != null) out.add(p);
+            }
+            return out;
+        }
+    }
+
+    // =========================
+    // Mini HTTP server (dashboard feed)
+    // =========================
+    public static final class DashServer {
+        private final HttpServer server;
+        private final AtomicBoolean running = new AtomicBoolean(false);
+        private final EngineHub hub;
+
+        public DashServer(int port, EngineHub hub) throws IOException {
+            this.hub = hub;
+            server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+            server.createContext("/api/health", new JsonHandler(ex -> jsonOk(mapOf(
+                    "ok", true,
+                    "app", APP,
+                    "dash", DASH,
+                    "build", BUILD_TAG,
+                    "motto", MOTTO,
+                    "ts", Instant.now().getEpochSecond()
+            ))));
+            server.createContext("/api/state", new JsonHandler(ex -> jsonOk(hub.stateJson())));
+            server.createContext("/api/pulses", new JsonHandler(ex -> jsonOk(hub.pulsesJson())));
+            server.createContext("/api/sim/step", new JsonHandler(ex -> {
+                if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) return jsonErr(405, "POST required");
+                hub.simStep();
+                return jsonOk(mapOf("ok", true));
+            }));
+            server.createContext("/", new TextHandler("Bull_Time java dash online.\nTry /api/state\n"));
+
+            server.setExecutor(Executors.newFixedThreadPool(6, r -> {
+                Thread t = new Thread(r, "bt-http-" + System.nanoTime());
+                t.setDaemon(true);
+                return t;
+            }));
+        }
