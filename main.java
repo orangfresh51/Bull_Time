@@ -414,3 +414,55 @@ public final class Bull_Time {
                 return t;
             }));
         }
+
+        public void start() {
+            if (running.compareAndSet(false, true)) server.start();
+        }
+
+        public void stop(int delaySeconds) {
+            if (running.compareAndSet(true, false)) server.stop(delaySeconds);
+        }
+    }
+
+    // =========================
+    // Engine hub: ties everything together
+    // =========================
+    public static final class EngineHub {
+        private final IndicatorEngine engine;
+        private final CommitReveal cr;
+        private final LocalMirror mirror;
+        private final List<String> feeders;
+        private final SecureRandom rng;
+        private long epoch;
+
+        private final List<Pulse> pulseHistory = new ArrayList<>();
+
+        public EngineHub(byte[] domainSalt, int minReveals, List<String> feeders) {
+            this.engine = new IndicatorEngine(domainSalt);
+            this.cr = new CommitReveal(domainSalt);
+            this.mirror = new LocalMirror(minReveals);
+            this.feeders = new ArrayList<>(feeders);
+            this.rng = seededRng(sha256(("hub|" + BUILD_TAG).getBytes(StandardCharsets.UTF_8)));
+            this.epoch = Math.abs(rng.nextInt(1_000_000));
+        }
+
+        public synchronized void simStep() {
+            // 1) create commits
+            for (String f : feeders) {
+                RevealPayload p = cr.randomPayload(epoch, f);
+                byte[] h = cr.expectedCommitHash(p);
+                mirror.putCommit(f, epoch, h);
+                // 2) reveal some subset
+                boolean doReveal = rng.nextDouble() > 0.18;
+                if (doReveal) mirror.putReveal(p);
+            }
+
+            // 3) finalize pulse if enough reveals
+            List<RevealPayload> rs = mirror.revealsFor(epoch);
+            if (rs.size() >= mirror.minReveals) {
+                Pulse p = finalizePulse(epoch, rs);
+                pulseHistory.add(p);
+                if (pulseHistory.size() > 5000) pulseHistory.remove(0);
+                // feed indicator engine with derived pseudo series
+                double price = x96ToDouble(p.medianPriceX96);
+                engine.ingest(price, p.volScoreBps, p.moodScoreBps);
