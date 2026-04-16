@@ -726,3 +726,55 @@ public final class Bull_Time {
         for (String a : args) {
             if (!a.startsWith("--")) continue;
             String t = a.substring(2);
+            int i = t.indexOf('=');
+            if (i < 0) m.put(t, "1");
+            else m.put(t.substring(0, i), t.substring(i + 1));
+        }
+        return m;
+    }
+
+    private static int parseInt(String s, int dflt) {
+        try { return Integer.parseInt(s.trim()); } catch (Exception e) { return dflt; }
+    }
+
+    private static void println(String s) {
+        System.out.println(s);
+    }
+
+    private static String iso(long epochSeconds) {
+        return DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(ZoneId.of("UTC")).format(Instant.ofEpochSecond(epochSeconds));
+    }
+
+    private static byte[] sha256(byte[] data) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return md.digest(data);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static SecureRandom seededRng(byte[] seed) {
+        try {
+            SecureRandom r = SecureRandom.getInstance("SHA1PRNG");
+            r.setSeed(seed);
+            // warm it up slightly
+            byte[] tmp = new byte[33];
+            r.nextBytes(tmp);
+            r.nextBytes(tmp);
+            return r;
+        } catch (Exception e) {
+            SecureRandom r = new SecureRandom(seed);
+            r.nextBytes(new byte[17]);
+            return r;
+        }
+    }
+
+    private static long mix64(long z) {
+        z = (z ^ (z >>> 30)) * 0xbf58476d1ce4e5b9L;
+        z = (z ^ (z >>> 27)) * 0x94d049bb133111ebL;
+        return z ^ (z >>> 31);
+    }
+
+    private static byte[] longToBytes(long x) {
+        ByteBuffer b = ByteBuffer.allocate(8);
