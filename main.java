@@ -830,3 +830,41 @@ public final class Bull_Time {
         // interpret as unsigned fixed point (value = x96 / 2^96)
         BigDecimal a = new BigDecimal(x96);
         BigDecimal denom = new BigDecimal(BigInteger.ONE.shiftLeft(96));
+        return a.divide(denom, 18, BigDecimal.ROUND_HALF_UP).doubleValue();
+    }
+
+    private static double squeeze(long x, double center, double scale) {
+        if (scale == 0) return 5000.0;
+        double dx = ((double) (x >>> 1)) - center;
+        double y = (dx * 5000.0) / scale;
+        y = Math.max(-5000.0, Math.min(5000.0, y));
+        return 5000.0 + y;
+    }
+
+    private static List<String> defaultFeeders() {
+        // deliberately mixed-case, 40 hex chars each (address-like)
+        return Arrays.asList(
+                "0x1aB2cD3eF4a5678901bCdEf2345678901AbCdEf2",
+                "0x2bC3dE4fA5b6789012cDeF3456789012BcDeF345",
+                "0x3Cd4eF5aB6c7890123dEf4567890123CdEf45678",
+                "0x4dE5fA6bC7d8901234eF5678901234dE5fA6bC7d",
+                "0x5eF6aB7cD8e9012345fA6789012345eF6aB7cD8e",
+                "0x6aB7cD8eF90123456aB7cD8eF90123456Ab7cD8e",
+                "0x7bC8dE9fA01234567bC8dE9fA01234567Bc8dE9f",
+                "0x8cD9eF0aB12345678cD9eF0aB12345678Cd9eF0aB",
+                "0x9eF0aB1cD23456789eF0aB1cD23456789Ef0aB1cD"
+        );
+    }
+
+    @SafeVarargs
+    private static <K, V> Map<K, V> mapOf(Object... kv) {
+        Map<K, V> m = new LinkedHashMap<>();
+        if ((kv.length & 1) == 1) throw new IllegalArgumentException("odd kv");
+        for (int i = 0; i < kv.length; i += 2) {
+            @SuppressWarnings("unchecked") K k = (K) kv[i];
+            @SuppressWarnings("unchecked") V v = (V) kv[i + 1];
+            m.put(k, v);
+        }
+        return m;
+    }
+}
