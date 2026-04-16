@@ -570,3 +570,55 @@ public final class Bull_Time {
         List<String> feeders = defaultFeeders();
 
         EngineHub hub = new EngineHub(domainSalt, minReveals, feeders);
+        DashServer server = new DashServer(port, hub);
+        if (serve) server.start();
+
+        println(banner(port, serve, simulate, steps, minReveals, feeders.size()));
+
+        if (simulate) {
+            for (int i = 0; i < steps; i++) {
+                hub.simStep();
+                if (i % 25 == 0) {
+                    Map<String, Object> s = hub.stateJson();
+                    Object lp = s.get("lastPulse");
+                    String state = String.valueOf(s.get("state"));
+                    println("step=" + i + " state=" + state + " lastPulse=" + (lp == null ? "null" : "ok"));
+                }
+                Thread.sleep(30);
+            }
+        }
+
+        if (serve) {
+            println("Server running. Ctrl+C to exit.");
+            // keep alive
+            Thread.currentThread().join();
+        }
+    }
+
+    private static String banner(int port, boolean serve, boolean simulate, int steps, int minReveals, int feederN) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n");
+        sb.append(APP).append(" / ").append(DASH).append("\n");
+        sb.append("build: ").append(BUILD_TAG).append("\n");
+        sb.append("motto: ").append(MOTTO).append("\n");
+        sb.append("anchors: ").append(GENESIS_CURATOR).append(" | ").append(GENESIS_BRAKE).append(" | ").append(GENESIS_SINK).append("\n");
+        sb.append("serve=").append(serve).append(" port=").append(port).append("\n");
+        sb.append("simulate=").append(simulate).append(" steps=").append(steps).append(" minReveals=").append(minReveals).append(" feeders=").append(feederN).append("\n");
+        sb.append("endpoints: /api/health /api/state /api/pulses /api/sim/step\n");
+        return sb.toString();
+    }
+
+    // =========================
+    // HTTP handlers
+    // =========================
+    private static final class TextHandler implements HttpHandler {
+        private final byte[] body;
+        TextHandler(String s) { this.body = s.getBytes(StandardCharsets.UTF_8); }
+        @Override public void handle(HttpExchange ex) throws IOException {
+            ex.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+            ex.sendResponseHeaders(200, body.length);
+            try (OutputStream os = ex.getResponseBody()) { os.write(body); }
+        }
+    }
+
+    private static final class JsonHandler implements HttpHandler {
