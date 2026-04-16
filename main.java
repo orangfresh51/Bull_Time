@@ -622,3 +622,55 @@ public final class Bull_Time {
     }
 
     private static final class JsonHandler implements HttpHandler {
+        private final Responder responder;
+        JsonHandler(Responder responder) { this.responder = responder; }
+        @Override public void handle(HttpExchange ex) throws IOException {
+            Response r;
+            try {
+                r = responder.respond(ex);
+            } catch (Throwable t) {
+                r = jsonErr(500, "internal: " + t.getClass().getSimpleName());
+            }
+            byte[] out = r.body.getBytes(StandardCharsets.UTF_8);
+            Headers h = ex.getResponseHeaders();
+            h.set("Content-Type", "application/json; charset=utf-8");
+            h.set("Cache-Control", "no-store");
+            h.set("X-BT-Build", BUILD_TAG);
+            ex.sendResponseHeaders(r.code, out.length);
+            try (OutputStream os = ex.getResponseBody()) { os.write(out); }
+        }
+    }
+
+    @FunctionalInterface
+    private interface Responder { Response respond(HttpExchange ex) throws Exception; }
+
+    private static final class Response {
+        final int code;
+        final String body;
+        Response(int code, String body) { this.code = code; this.body = body; }
+    }
+
+    private static Response jsonOk(Object o) {
+        return new Response(200, toJson(o));
+    }
+
+    private static Response jsonErr(int code, String msg) {
+        return new Response(code, toJson(mapOf("ok", false, "error", msg)));
+    }
+
+    // =========================
+    // JSON (tiny)
+    // =========================
+    private static String toJson(Object o) {
+        StringBuilder sb = new StringBuilder();
+        writeJson(sb, o);
+        return sb.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void writeJson(StringBuilder sb, Object o) {
+        if (o == null) { sb.append("null"); return; }
+        if (o instanceof Boolean) { sb.append(((Boolean) o) ? "true" : "false"); return; }
+        if (o instanceof Number) { sb.append(o.toString()); return; }
+        if (o instanceof String) { sb.append('"').append(escape((String) o)).append('"'); return; }
+        if (o instanceof Map) {
