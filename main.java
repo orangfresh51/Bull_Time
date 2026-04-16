@@ -778,3 +778,55 @@ public final class Bull_Time {
 
     private static byte[] longToBytes(long x) {
         ByteBuffer b = ByteBuffer.allocate(8);
+        b.putLong(x);
+        return b.array();
+    }
+
+    private static byte[] intToBytes(int x) {
+        ByteBuffer b = ByteBuffer.allocate(4);
+        b.putInt(x);
+        return b.array();
+    }
+
+    private static byte[] bigToBytes(BigInteger x) {
+        byte[] a = x.toByteArray();
+        // normalize: avoid sign-extension variability
+        if (a.length > 1 && a[0] == 0) return Arrays.copyOfRange(a, 1, a.length);
+        return a;
+    }
+
+    private static String hex(byte[] b) {
+        char[] out = new char[b.length * 2];
+        final char[] H = "0123456789abcdef".toCharArray();
+        for (int i = 0; i < b.length; i++) {
+            int v = b[i] & 0xff;
+            out[i * 2] = H[v >>> 4];
+            out[i * 2 + 1] = H[v & 0x0f];
+        }
+        return new String(out);
+    }
+
+    private static String strip0x(String s) {
+        if (s == null) return "";
+        if (s.startsWith("0x") || s.startsWith("0X")) return s.substring(2);
+        return s;
+    }
+
+    private static byte[] hexToBytes(String s) {
+        String t = s.trim();
+        if ((t.length() & 1) == 1) t = "0" + t;
+        int n = t.length() / 2;
+        byte[] out = new byte[n];
+        for (int i = 0; i < n; i++) {
+            int hi = Character.digit(t.charAt(i * 2), 16);
+            int lo = Character.digit(t.charAt(i * 2 + 1), 16);
+            if (hi < 0 || lo < 0) throw new IllegalArgumentException("bad hex");
+            out[i] = (byte) ((hi << 4) | lo);
+        }
+        return out;
+    }
+
+    private static double x96ToDouble(BigInteger x96) {
+        // interpret as unsigned fixed point (value = x96 / 2^96)
+        BigDecimal a = new BigDecimal(x96);
+        BigDecimal denom = new BigDecimal(BigInteger.ONE.shiftLeft(96));
