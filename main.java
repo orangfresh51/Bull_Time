@@ -674,3 +674,55 @@ public final class Bull_Time {
         if (o instanceof Number) { sb.append(o.toString()); return; }
         if (o instanceof String) { sb.append('"').append(escape((String) o)).append('"'); return; }
         if (o instanceof Map) {
+            sb.append('{');
+            boolean first = true;
+            for (Map.Entry<Object, Object> e : ((Map<Object, Object>) o).entrySet()) {
+                if (!first) sb.append(',');
+                first = false;
+                sb.append('"').append(escape(String.valueOf(e.getKey()))).append("\":");
+                writeJson(sb, e.getValue());
+            }
+            sb.append('}');
+            return;
+        }
+        if (o instanceof Iterable) {
+            sb.append('[');
+            boolean first = true;
+            for (Object x : (Iterable<?>) o) {
+                if (!first) sb.append(',');
+                first = false;
+                writeJson(sb, x);
+            }
+            sb.append(']');
+            return;
+        }
+        // fallback: stringify
+        sb.append('"').append(escape(String.valueOf(o))).append('"');
+    }
+
+    private static String escape(String s) {
+        StringBuilder sb = new StringBuilder(s.length() + 16);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\': sb.append("\\\\"); break;
+                case '"': sb.append("\\\""); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default:
+                    if (c < 32) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    // =========================
+    // Utilities
+    // =========================
+    private static Map<String, String> parseFlags(String[] args) {
+        Map<String, String> m = new LinkedHashMap<>();
+        for (String a : args) {
+            if (!a.startsWith("--")) continue;
+            String t = a.substring(2);
